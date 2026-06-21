@@ -6,20 +6,22 @@ from PIL import Image
 import io
 import uuid
 import urllib.parse
-import urllib.parse
 import random
 
+# 🚨 THIS MUST BE THE FIRST STREAMLIT COMMAND 🚨
+st.set_page_config(page_title="My AI Cloud Closet", layout="wide", initial_sidebar_state="expanded")
+
+# --- 1. CONFIGURATION ---
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
+# Initialize Connections
 genai.configure(api_key=GEMINI_API_KEY)
 
 pro_model = genai.GenerativeModel('gemini-2.5-pro')
 flash_model = genai.GenerativeModel('gemini-1.5-flash-001')
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-st.set_page_config(page_title="My AI Cloud Closet", layout="wide", initial_sidebar_state="expanded")
 
 st.sidebar.title("⚡ AI Closet")
 menu_selection = st.sidebar.radio("Navigation", ["👗 My Closet", "✨ Daily Stylist", "🔥 Pro Mode", "⚙️ Profile"])
