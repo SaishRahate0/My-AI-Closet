@@ -43,16 +43,18 @@ if menu_selection == "👗 My Closet":
             if st.button("Process & Save"):
                 with st.spinner("Processing image & analyzing..."):
                     
-                    # --- NEW: Shrink the image to prevent memory crash ---
-                    max_size = (800, 800) # Fast, lightweight resolution
+                    # --- 1. Shrink the image ---
+                    max_size = (800, 800) 
                     safe_image = original_image.copy()
                     safe_image.thumbnail(max_size, Image.Resampling.LANCZOS)
                     
-                    # 1. Remove Background (Imported dynamically to prevent server crash!)
-                    from rembg import remove
+                    # --- 2. Remove Background using the POCKET model ---
+                    from rembg import remove, new_session
                     
-                    # Send the SHRINKED image to the AI, not the original 50MP one!
-                    clean_image = remove(safe_image) 
+                    # Tell rembg to use 'u2netp' which uses almost 0 RAM!
+                    lightweight_ai = new_session("u2netp")
+                    clean_image = remove(safe_image, session=lightweight_ai) 
+                    
                     st.image(clean_image, width="stretch")
                 
                     img_byte_arr = io.BytesIO()
@@ -61,15 +63,14 @@ if menu_selection == "👗 My Closet":
                     
                     file_name = f"{uuid.uuid4()}.png"
                     
-                    # 2. Upload to Storage Bucket
+                    # 3. Upload to Storage Bucket
                     supabase.storage.from_("clothes_images").upload(file_name, img_bytes)
                     image_url = supabase.storage.from_("clothes_images").get_public_url(file_name)
                     
-                    # 3. Bulletproof AI Analysis (Graceful Degradation)
-                    details = ["Item", "Unknown Color", "Casual", "All-Season"] # Fallback defaults
+                    # 4. Bulletproof AI Analysis
+                    details = ["Item", "Unknown Color", "Casual", "All-Season"] 
                     
                     try:
-                        # Dynamically find an available vision model authorized for your key
                         working_model_name = 'gemini-1.5-flash-001' 
                         for m in genai.list_models():
                             if 'vision' in m.name or 'flash' in m.name:
@@ -78,7 +79,6 @@ if menu_selection == "👗 My Closet":
                                 
                         vision_model = genai.GenerativeModel(working_model_name)
                         
-                        # --- THE ORIGIN SCANNER PROMPT ---
                         prompt = """Look at this clothing item. Be extremely specific. 
                         If you recognize any brand logos, sports teams (like Real Madrid), patterns, or specific origins, include them in the category name!
                         Reply ONLY with a comma-separated list: 
@@ -88,9 +88,7 @@ if menu_selection == "👗 My Closet":
                         4. Season (summer, winter, spring, all-season)
                         No other text."""
                         
-                        # API Fix: Convert transparent PNG to solid RGB 
                         safe_image_for_api = clean_image.convert('RGB')
-                        
                         analysis = vision_model.generate_content([prompt, safe_image_for_api])
                         
                         if ',' in analysis.text:
@@ -100,7 +98,7 @@ if menu_selection == "👗 My Closet":
                     except Exception as e:
                         st.warning("AI tagging skipped due to API limits. Saved with default tags.")
                     
-                    # 4. Save to Database Table
+                    # 5. Save to Database
                     try:
                         supabase.table("closet").insert({
                             "clothing_type": details[0].strip(),
@@ -110,10 +108,48 @@ if menu_selection == "👗 My Closet":
                             "image_url": image_url
                         }).execute()
                         st.success("Successfully saved to your cloud wardrobe!")
-                        st.rerun() # Refresh the screen instantly to show the sprite
+                        st.rerun() 
                     except Exception as db_error:
                         print(f"THE REAL ERROR IS: {db_error}")
                         st.error("Database Error! Check your terminal for the exact reason.")
+
+    # --- RESTORED WARDROBE GRID ---
+    st.markdown("---")
+    st.subheader("Your Current Wardrobe")
+    
+    try:
+        response = supabase.table("closet").select("*").execute()
+        clothes = response.data
+        
+        if not clothes:
+            st.write("No clothes saved yet!")
+        else:
+            emoji_map = {"t-shirt": "👕", "shirt": "👔", "jeans": "👖", "pants": "👖", "shorts": "🩳", "shoes": "👟", "jacket": "🧥", "accessory": "💍", "chain": "⛓️", "jersey": "🎽", "hoodie": "🧥"}
+            
+            cols = st.columns(8) 
+            for index, item in enumerate(clothes):
+                with cols[index % 8]:
+                    c_type = item.get('clothing_type', '').lower()
+                    icon = "🧥" 
+                    for key in emoji_map:
+                        if key in c_type:
+                            icon = emoji_map[key]
+                            break
+                            
+                    st.image(item.get('image_url', ''), width=80)
+                    st.caption(f"{icon} {item.get('color', '').title()} {c_type.title()}")
+                    
+                    btn_col1, btn_col2 = st.columns(2)
+                    with btn_col1:
+                        if st.button("❌", key=f"del_{index}", help="Permanently Delete"):
+                            supabase.table("closet").delete().eq("image_url", item.get('image_url')).execute()
+                            st.rerun()
+                    with btn_col2:
+                        if st.button("📦", key=f"arc_{index}", help="Archive Item"):
+                            st.toast("To fully archive, we will need to add an 'is_archived' column in Supabase later. Use Delete for now!", icon="🚧")
+                    
+    except Exception as e:
+        st.error("Database error while loading wardrobe grid.")
 # --- 4. DAILY STYLIST (✨ Daily Stylist) ---
 elif menu_selection == "✨ Daily Stylist":
     st.title("Your Personal AI Stylist")
