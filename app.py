@@ -44,41 +44,36 @@ if menu_selection == "👗 My Closet":
     if uploaded_file is not None:
         col1, col2 = st.columns(2)
         
+        # --- MEMORY FIX 1: Shrink immediately to drop the 50MP file from RAM ---
+        original_image = Image.open(uploaded_file).convert('RGB')
+        safe_image = original_image.copy()
+        safe_image.thumbnail((320, 320), Image.Resampling.LANCZOS) # Native AI resolution!
+        
         with col1:
             st.subheader("Original Image")
-            original_image = Image.open(uploaded_file)
-            st.image(original_image, width="stretch")
+            # Show the lightweight preview, NOT the massive original
+            st.image(safe_image, width="stretch")
             
         with col2:
             st.subheader("Essembl-Style Floating Item")
             if st.button("Process & Save"):
                 with st.spinner("Processing..."):
                     
-                    # 1. ANTI-DEADLOCK: Force single-core math
-                    import os
-                    os.environ["OMP_NUM_THREADS"] = "1"
-                    os.environ["OPENBLAS_NUM_THREADS"] = "1"
-                    os.environ["MKL_NUM_THREADS"] = "1"
+                    # --- MEMORY FIX 2: Force Linux to empty the RAM trash bin ---
+                    import gc
+                    gc.collect() 
                     
-                    # 2. STATUS TRACKER (So we know EXACTLY where it freezes)
                     status_text = st.empty()
-                    status_text.info("⚙️ Step 1/4: Formatting and shrinking photo...")
                     
-                    max_size = (600, 600) 
-                    safe_image = original_image.convert('RGB') # Strips weird JPEG metadata
-                    safe_image.thumbnail(max_size, Image.Resampling.LANCZOS)
-                    
-                    # --- NEW STEP 2: The Google Drive Bypass ---
+                    # --- STEP 2: The Google Drive Bypass ---
                     import os
                     import urllib.request
                     
-                    # Tell the server to use the open /tmp folder
                     os.environ["U2NET_HOME"] = "/tmp"
                     model_dir = "/tmp/.u2net"
                     os.makedirs(model_dir, exist_ok=True)
                     model_path = os.path.join(model_dir, "u2netp.onnx")
                     
-                    # If the brain isn't there, download it from GitHub (NOT Google Drive!)
                     if not os.path.exists(model_path):
                         status_text.info("📥 Step 2.1: Bypassing server firewall to download AI brain...")
                         urllib.request.urlretrieve(
@@ -86,10 +81,9 @@ if menu_selection == "👗 My Closet":
                             model_path
                         )
                     
-                    status_text.info("✂️ Step 2.2: Slicing background...")
+                    status_text.info("✂️ Step 2.2: Slicing background (Featherweight Mode)...")
                     from rembg import remove, new_session
                     
-                    # Force basic CPU mode so it doesn't search for a graphics card
                     lightweight_ai = new_session("u2netp", providers=["CPUExecutionProvider"])
                     clean_image = remove(safe_image, session=lightweight_ai) 
                     
@@ -144,7 +138,7 @@ if menu_selection == "👗 My Closet":
                             "season": details[3].strip(),
                             "image_url": image_url
                         }).execute()
-                        status_text.empty() # Clear the status text
+                        status_text.empty() 
                         st.success("Successfully saved to your cloud wardrobe!")
                         st.rerun() 
                     except Exception as db_error:
