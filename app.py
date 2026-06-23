@@ -1,7 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
 from supabase import create_client, Client
-from rembg import remove
 from PIL import Image
 import io
 import uuid
@@ -40,12 +39,15 @@ if menu_selection == "👗 My Closet":
             st.image(original_image, width="stretch")
             
         with col2:
-            st.subheader("Essembl-Style Floating Item")
-            if st.button("Process & Save"):
-                with st.spinner("Processing image & analyzing..."):
-                    # 1. Remove Background
-                    clean_image = remove(original_image)
-                    st.image(clean_image, width="stretch")
+                st.subheader("Essembl-Style Floating Item")
+                if st.button("Process & Save"):
+                    with st.spinner("Processing image & analyzing..."):
+                        
+                        # 1. Remove Background (Imported dynamically to prevent server crash!)
+                        from rembg import remove
+                        
+                        clean_image = remove(original_image)
+                        st.image(clean_image, width="stretch")
                     
                     img_byte_arr = io.BytesIO()
                     clean_image.save(img_byte_arr, format='PNG')
