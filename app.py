@@ -1,3 +1,11 @@
+# 🚨 THESE 6 LINES MUST BE THE ABSOLUTE FIRST THING IN THE FILE 🚨
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import streamlit as st
 import google.generativeai as genai
 from supabase import create_client, Client
@@ -9,6 +17,8 @@ import random
 
 # 🚨 THIS MUST BE THE FIRST STREAMLIT COMMAND 🚨
 st.set_page_config(page_title="My AI Cloud Closet", layout="wide", initial_sidebar_state="expanded")
+
+# ... (keep the rest of your configuration and code exactly the same)
 
 # --- 1. CONFIGURATION ---
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
