@@ -138,8 +138,7 @@ if menu_selection == "👗 My Closet":
                             break
                             
                     # Streamlit natively allows you to click images to expand them!
-                    # Streamlit natively allows you to click images to expand them!
-                    st.image(item.get('image_url', ''), width="stretch")
+                    st.image(item.get('image_url', ''), width=80)
                     st.caption(f"{icon} {item.get('color', '').title()} {c_type.title()}")
                     
                     # --- NEW: Delete & Archive Buttons ---
@@ -395,7 +394,7 @@ elif menu_selection == "⚙️ Profile":
     # --- Magic Selfie Scanner ---
     st.subheader("✨ AI Selfie Setup")
     st.write("Let the AI analyze your face shape and skin tone automatically.")
-    selfie_file = st.file_uploader("Upload a selfie", type=["jpg", "jpeg", "png"])
+    selfie_file = st.camera_input("📸 Snap a quick selfie")
     
     if selfie_file:
         selfie_img = Image.open(selfie_file)
