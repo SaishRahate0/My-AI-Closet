@@ -5,6 +5,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["U2NET_HOME"] = "/tmp" # <--- NEW: Forces download to the open temp folder!
 
 import streamlit as st
 import google.generativeai as genai
@@ -69,7 +70,9 @@ if menu_selection == "👗 My Closet":
                     
                     status_text.info("✂️ Step 2/4: Slicing background (may take 60s on first run)...")
                     from rembg import remove, new_session
-                    lightweight_ai = new_session("u2netp")
+                    
+                    # NEW: Explicitly force the basic CPU so it stops searching for hardware!
+                    lightweight_ai = new_session("u2netp", providers=["CPUExecutionProvider"])
                     clean_image = remove(safe_image, session=lightweight_ai) 
                     
                     st.image(clean_image, width="stretch")
