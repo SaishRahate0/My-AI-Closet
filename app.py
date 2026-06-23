@@ -1,12 +1,3 @@
-# 🚨 THESE 6 LINES MUST BE THE ABSOLUTE FIRST THING IN THE FILE 🚨
-import os
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["U2NET_HOME"] = "/tmp" # <--- NEW: Forces download to the open temp folder!
-
 import streamlit as st
 import google.generativeai as genai
 from supabase import create_client, Client
@@ -15,20 +6,19 @@ import io
 import uuid
 import urllib.parse
 import random
+import requests # <--- NEW: For talking to external APIs
 
 # 🚨 THIS MUST BE THE FIRST STREAMLIT COMMAND 🚨
 st.set_page_config(page_title="My AI Cloud Closet", layout="wide", initial_sidebar_state="expanded")
-
-# ... (keep the rest of your configuration and code exactly the same)
 
 # --- 1. CONFIGURATION ---
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+REMOVEBG_API_KEY = st.secrets["REMOVEBG_API_KEY"] # <--- Fetch the new key
 
 # Initialize Connections
 genai.configure(api_key=GEMINI_API_KEY)
-
 pro_model = genai.GenerativeModel('gemini-2.5-pro')
 flash_model = genai.GenerativeModel('gemini-1.5-flash-001')
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -44,61 +34,49 @@ if menu_selection == "👗 My Closet":
     if uploaded_file is not None:
         col1, col2 = st.columns(2)
         
-        # --- MEMORY FIX 1: Shrink immediately to drop the 50MP file from RAM ---
         original_image = Image.open(uploaded_file).convert('RGB')
-        safe_image = original_image.copy()
-        safe_image.thumbnail((320, 320), Image.Resampling.LANCZOS) # Native AI resolution!
         
         with col1:
             st.subheader("Original Image")
-            # Show the lightweight preview, NOT the massive original
-            st.image(safe_image, width="stretch")
+            # We can show the original safely now since we aren't doing local math!
+            st.image(original_image, use_container_width=True) 
             
         with col2:
             st.subheader("Essembl-Style Floating Item")
             if st.button("Process & Save"):
                 with st.spinner("Processing..."):
                     
-                    # --- MEMORY FIX 2: Force Linux to empty the RAM trash bin ---
-                    import gc
-                    gc.collect() 
-                    
                     status_text = st.empty()
                     
-                    # --- STEP 2: The Google Drive Bypass ---
-                    import os
-                    import urllib.request
+                    # --- STEP 1: Send to Remove.BG API ---
+                    status_text.info("✂️ Step 1/3: Slicing background via API...")
                     
-                    os.environ["U2NET_HOME"] = "/tmp"
-                    model_dir = "/tmp/.u2net"
-                    os.makedirs(model_dir, exist_ok=True)
-                    model_path = os.path.join(model_dir, "u2netp.onnx")
+                    # Get the raw bytes from the uploaded file
+                    image_bytes = uploaded_file.getvalue()
                     
-                    if not os.path.exists(model_path):
-                        status_text.info("📥 Step 2.1: Bypassing server firewall to download AI brain...")
-                        urllib.request.urlretrieve(
-                            "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
-                            model_path
-                        )
+                    response = requests.post(
+                        'https://api.remove.bg/v1.0/removebg',
+                        files={'image_file': image_bytes},
+                        data={'size': 'auto'},
+                        headers={'X-Api-Key': REMOVEBG_API_KEY},
+                    )
                     
-                    status_text.info("✂️ Step 2.2: Slicing background (Featherweight Mode)...")
-                    from rembg import remove, new_session
-                    
-                    lightweight_ai = new_session("u2netp", providers=["CPUExecutionProvider"])
-                    clean_image = remove(safe_image, session=lightweight_ai) 
-                    
-                    st.image(clean_image, width="stretch")
+                    if response.status_code == requests.codes.ok:
+                        clean_image_bytes = response.content
+                        clean_image = Image.open(io.BytesIO(clean_image_bytes))
+                        st.image(clean_image, use_container_width=True)
+                    else:
+                        st.error(f"Background removal failed: {response.status_code}")
+                        st.stop() # Halt execution if the API fails
                 
-                    status_text.info("☁️ Step 3/4: Uploading to Cloud Database...")
-                    img_byte_arr = io.BytesIO()
-                    clean_image.save(img_byte_arr, format='PNG')
-                    img_bytes = img_byte_arr.getvalue()
-                    
+                    # --- STEP 2: Upload to Supabase ---
+                    status_text.info("☁️ Step 2/3: Uploading to Cloud Database...")
                     file_name = f"{uuid.uuid4()}.png"
-                    supabase.storage.from_("clothes_images").upload(file_name, img_bytes)
+                    supabase.storage.from_("clothes_images").upload(file_name, clean_image_bytes)
                     image_url = supabase.storage.from_("clothes_images").get_public_url(file_name)
                     
-                    status_text.info("🧠 Step 4/4: Gemini AI is analyzing the style...")
+                    # --- STEP 3: Gemini Analysis ---
+                    status_text.info("🧠 Step 3/3: Gemini AI is analyzing the style...")
                     details = ["Item", "Unknown Color", "Casual", "All-Season"] 
                     
                     try:
@@ -119,6 +97,7 @@ if menu_selection == "👗 My Closet":
                         4. Season (summer, winter, spring, all-season)
                         No other text."""
                         
+                        # Gemini needs a PIL Image object
                         safe_image_for_api = clean_image.convert('RGB')
                         analysis = vision_model.generate_content([prompt, safe_image_for_api])
                         
@@ -129,7 +108,7 @@ if menu_selection == "👗 My Closet":
                     except Exception as e:
                         st.warning("AI tagging skipped due to API limits. Saved with default tags.")
                     
-                    # 5. Save to Database
+                    # --- STEP 4: Save to Database ---
                     try:
                         supabase.table("closet").insert({
                             "clothing_type": details[0].strip(),
@@ -145,7 +124,7 @@ if menu_selection == "👗 My Closet":
                         print(f"THE REAL ERROR IS: {db_error}")
                         st.error("Database Error! Check your terminal for the exact reason.")
 
-    # --- RESTORED WARDROBE GRID ---
+    # --- WARDROBE GRID ---
     st.markdown("---")
     st.subheader("Your Current Wardrobe")
     
