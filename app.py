@@ -41,33 +41,39 @@ if menu_selection == "👗 My Closet":
         with col2:
             st.subheader("Essembl-Style Floating Item")
             if st.button("Process & Save"):
-                with st.spinner("Processing image & analyzing..."):
+                with st.spinner("Processing..."):
                     
-                    # --- 1. Shrink the image ---
-                    max_size = (800, 800) 
-                    safe_image = original_image.copy()
+                    # 1. ANTI-DEADLOCK: Force single-core math
+                    import os
+                    os.environ["OMP_NUM_THREADS"] = "1"
+                    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+                    os.environ["MKL_NUM_THREADS"] = "1"
+                    
+                    # 2. STATUS TRACKER (So we know EXACTLY where it freezes)
+                    status_text = st.empty()
+                    status_text.info("⚙️ Step 1/4: Formatting and shrinking photo...")
+                    
+                    max_size = (600, 600) 
+                    safe_image = original_image.convert('RGB') # Strips weird JPEG metadata
                     safe_image.thumbnail(max_size, Image.Resampling.LANCZOS)
                     
-                    # --- 2. Remove Background using the POCKET model ---
+                    status_text.info("✂️ Step 2/4: Slicing background (may take 60s on first run)...")
                     from rembg import remove, new_session
-                    
-                    # Tell rembg to use 'u2netp' which uses almost 0 RAM!
                     lightweight_ai = new_session("u2netp")
                     clean_image = remove(safe_image, session=lightweight_ai) 
                     
                     st.image(clean_image, width="stretch")
                 
+                    status_text.info("☁️ Step 3/4: Uploading to Cloud Database...")
                     img_byte_arr = io.BytesIO()
                     clean_image.save(img_byte_arr, format='PNG')
                     img_bytes = img_byte_arr.getvalue()
                     
                     file_name = f"{uuid.uuid4()}.png"
-                    
-                    # 3. Upload to Storage Bucket
                     supabase.storage.from_("clothes_images").upload(file_name, img_bytes)
                     image_url = supabase.storage.from_("clothes_images").get_public_url(file_name)
                     
-                    # 4. Bulletproof AI Analysis
+                    status_text.info("🧠 Step 4/4: Gemini AI is analyzing the style...")
                     details = ["Item", "Unknown Color", "Casual", "All-Season"] 
                     
                     try:
@@ -80,7 +86,7 @@ if menu_selection == "👗 My Closet":
                         vision_model = genai.GenerativeModel(working_model_name)
                         
                         prompt = """Look at this clothing item. Be extremely specific. 
-                        If you recognize any brand logos, sports teams (like Real Madrid), patterns, or specific origins, include them in the category name!
+                        If you recognize any brand logos, sports teams, patterns, or specific origins, include them in the category name!
                         Reply ONLY with a comma-separated list: 
                         1. Specific Category (e.g., Real Madrid Jersey, Nike Air Max, Vintage Denim Jacket)
                         2. Color 
@@ -107,6 +113,7 @@ if menu_selection == "👗 My Closet":
                             "season": details[3].strip(),
                             "image_url": image_url
                         }).execute()
+                        status_text.empty() # Clear the status text
                         st.success("Successfully saved to your cloud wardrobe!")
                         st.rerun() 
                     except Exception as db_error:
