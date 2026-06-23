@@ -68,10 +68,28 @@ if menu_selection == "👗 My Closet":
                     safe_image = original_image.convert('RGB') # Strips weird JPEG metadata
                     safe_image.thumbnail(max_size, Image.Resampling.LANCZOS)
                     
-                    status_text.info("✂️ Step 2/4: Slicing background (may take 60s on first run)...")
+                    # --- NEW STEP 2: The Google Drive Bypass ---
+                    import os
+                    import urllib.request
+                    
+                    # Tell the server to use the open /tmp folder
+                    os.environ["U2NET_HOME"] = "/tmp"
+                    model_dir = "/tmp/.u2net"
+                    os.makedirs(model_dir, exist_ok=True)
+                    model_path = os.path.join(model_dir, "u2netp.onnx")
+                    
+                    # If the brain isn't there, download it from GitHub (NOT Google Drive!)
+                    if not os.path.exists(model_path):
+                        status_text.info("📥 Step 2.1: Bypassing server firewall to download AI brain...")
+                        urllib.request.urlretrieve(
+                            "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+                            model_path
+                        )
+                    
+                    status_text.info("✂️ Step 2.2: Slicing background...")
                     from rembg import remove, new_session
                     
-                    # NEW: Explicitly force the basic CPU so it stops searching for hardware!
+                    # Force basic CPU mode so it doesn't search for a graphics card
                     lightweight_ai = new_session("u2netp", providers=["CPUExecutionProvider"])
                     clean_image = remove(safe_image, session=lightweight_ai) 
                     
