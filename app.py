@@ -39,16 +39,22 @@ if menu_selection == "👗 My Closet":
             st.image(original_image, width="stretch")
             
         with col2:
-                st.subheader("Essembl-Style Floating Item")
-                if st.button("Process & Save"):
-                    with st.spinner("Processing image & analyzing..."):
-                        
-                        # 1. Remove Background (Imported dynamically to prevent server crash!)
-                        from rembg import remove
-                        
-                        clean_image = remove(original_image)
-                        st.image(clean_image, width="stretch")
+            st.subheader("Essembl-Style Floating Item")
+            if st.button("Process & Save"):
+                with st.spinner("Processing image & analyzing..."):
                     
+                    # --- NEW: Shrink the image to prevent memory crash ---
+                    max_size = (800, 800) # Fast, lightweight resolution
+                    safe_image = original_image.copy()
+                    safe_image.thumbnail(max_size, Image.Resampling.LANCZOS)
+                    
+                    # 1. Remove Background (Imported dynamically to prevent server crash!)
+                    from rembg import remove
+                    
+                    # Send the SHRINKED image to the AI, not the original 50MP one!
+                    clean_image = remove(safe_image) 
+                    st.image(clean_image, width="stretch")
+                
                     img_byte_arr = io.BytesIO()
                     clean_image.save(img_byte_arr, format='PNG')
                     img_bytes = img_byte_arr.getvalue()
@@ -64,13 +70,12 @@ if menu_selection == "👗 My Closet":
                     
                     try:
                         # Dynamically find an available vision model authorized for your key
-                        working_model_name = 'gemini-pro-vision' 
+                        working_model_name = 'gemini-1.5-flash-001' 
                         for m in genai.list_models():
                             if 'vision' in m.name or 'flash' in m.name:
                                 working_model_name = m.name
                                 break
                                 
-                        vision_model = genai.GenerativeModel(working_model_name)
                         vision_model = genai.GenerativeModel(working_model_name)
                         
                         # --- THE ORIGIN SCANNER PROMPT ---
@@ -107,57 +112,8 @@ if menu_selection == "👗 My Closet":
                         st.success("Successfully saved to your cloud wardrobe!")
                         st.rerun() # Refresh the screen instantly to show the sprite
                     except Exception as db_error:
-                        print(f"THE REAL ERROR IS: {db_error}") # <--- ADD THIS LINE
+                        print(f"THE REAL ERROR IS: {db_error}")
                         st.error("Database Error! Check your terminal for the exact reason.")
-
-    st.markdown("---")
-    st.subheader("Your Current Wardrobe")
-    
-    # 5. Display existing clothes (Tiny Icon Grid)
-    try:
-        response = supabase.table("closet").select("*").execute()
-        clothes = response.data
-        
-        if not clothes:
-            st.write("No clothes saved yet!")
-        else:
-            # A dictionary to assign emojis to clothing types
-            emoji_map = {"t-shirt": "👕", "shirt": "👔", "jeans": "👖", "pants": "👖", "shorts": "🩳", "shoes": "👟", "jacket": "🧥", "accessory": "💍", "chain": "⛓️", "jersey": "🎽", "hoodie": "🧥"}
-            
-            # Using 8 columns makes them tiny like app icons!
-            cols = st.columns(8) 
-            for index, item in enumerate(clothes):
-                with cols[index % 8]:
-                    c_type = item.get('clothing_type', '').lower()
-                    
-                    # Search for the right emoji, default to a hanger if unknown
-                    icon = "🧥" 
-                    for key in emoji_map:
-                        if key in c_type:
-                            icon = emoji_map[key]
-                            break
-                            
-                    # Streamlit natively allows you to click images to expand them!
-                    st.image(item.get('image_url', ''), width=80)
-                    st.caption(f"{icon} {item.get('color', '').title()} {c_type.title()}")
-                    
-                    # --- NEW: Delete & Archive Buttons ---
-                    # We put them side-by-side using tiny columns so it stays neat
-                    btn_col1, btn_col2 = st.columns(2)
-                    
-                    with btn_col1:
-                        # Streamlit requires a unique key for buttons in a loop
-                        if st.button("❌", key=f"del_{index}", help="Permanently Delete"):
-                            supabase.table("closet").delete().eq("image_url", item.get('image_url')).execute()
-                            st.rerun()
-                            
-                    with btn_col2:
-                        if st.button("📦", key=f"arc_{index}", help="Archive Item"):
-                            st.toast("To fully archive, we will need to add an 'is_archived' column in Supabase later. Use Delete for now!", icon="🚧")
-                    
-    except Exception as e:
-        st.error("Database error while loading wardrobe grid.")
-
 # --- 4. DAILY STYLIST (✨ Daily Stylist) ---
 elif menu_selection == "✨ Daily Stylist":
     st.title("Your Personal AI Stylist")
